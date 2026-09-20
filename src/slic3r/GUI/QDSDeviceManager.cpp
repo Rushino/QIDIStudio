@@ -966,6 +966,10 @@ void QDSDevice::updateFilamentConfig(bool force_local)
         if (m_is_init_filamentConfig && !force_local) {
             return;
         }
+        if (m_filament_config_refreshing) {
+            return;
+        }
+        m_filament_config_refreshing = true;
     }
 
     // ── Helper: process any save_variables that arrived before config ──
@@ -982,6 +986,10 @@ void QDSDevice::updateFilamentConfig(bool force_local)
         std::string resultBody;
         //y83
         std::lock_guard<std::mutex> lock(m_config_mtx);
+        struct RefreshGuard {
+            QDSDevice *device;
+            ~RefreshGuard() { device->m_filament_config_refreshing = false; }
+        } refresh_guard{ this };
 
         // ── Shared lambda: parse result JSON body into m_filamentConfig ──
         auto parseFilamentJson = [this, &flushPendingBoxUpdate](const json &resultJson) -> bool {

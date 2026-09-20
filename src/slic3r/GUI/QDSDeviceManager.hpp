@@ -301,6 +301,7 @@ public:
 
     bool m_is_init_filamentConfig{ false };
 	std::mutex m_config_mtx;
+    bool m_filament_config_refreshing{ false };
     bool is_net_device{ false };
 
     // Pending save_variables captured before m_filamentConfig is ready;
