@@ -15,45 +15,7 @@ jobs:
       uses: microsoft/setup-msbuild@v2
       with:
         vs-version: '[17.0,18.0)'
-
-    - name: Setup libraries on linux
-      if: startsWith(matrix.os, 'ubuntu-')    
-      run: |
-          sudo apt-get update
-          sudo apt-get install  -y \
-          build-essential \
-          cmake \
-          extra-cmake-modules \
-          libglu1-mesa-dev \
-          libgtk-3-dev \
-          libdbus-1-dev \
-          libwebkit2gtk-4.1-dev \
-          libboost*1.74-dev \
-          libglfw3-dev \
-          libnlopt*-dev \
-          libtbb-dev \
-          nasm \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev \
-          libgstreamer-plugins-bad1.0-dev \
-          libcurl4-openssl-dev \
-          libosmesa6-dev
-          
-    - name: Setup libraries on Mac
-      if: startsWith(matrix.os, 'macos-')    
-      run: |
-          brew update-reset
-          brew update
-          brew install \
-          icu4c \
-          boost \
-          automake \
-          git \
-          nasm \
-          tbb \
-          texinfo \
-          zlib
-          
+        
     - name: Setup PkgConfig
       if: startsWith(matrix.os, 'windows-')
       run: choco install pkgconfiglite -y
@@ -92,58 +54,9 @@ jobs:
           cmake .. -G "Visual Studio 17 2022" -DQDT_RELEASE_TO_PUBLIC=0 -DCMAKE_PREFIX_PATH="${{ github.workspace }}\deps\build\QIDIStudio_dep\usr\local" -DCMAKE_INSTALL_PREFIX="../install_dir" -DCMAKE_BUILD_TYPE=Release -DWIN10SDK_PATH="C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0"
           cmake --build . --target install --config Release
     
-    - name: Build QIDI Studio on Linux 
-      if: startsWith(matrix.os, 'ubuntu-')
-      run: |
-          export CMAKE_TLS_VERIFY=0
-          sed -i "s/-DQDT_INTERNAL_TESTING=0/-DQDT_INTERNAL_TESTING=1 -DQDT_RELEASE_TO_PUBLIC=0/" BuildLinux.sh 
-          chmod +x BuildLinux.sh
-          ./BuildLinux.sh -dsi
-
-    - name: Build QIDI Studio on MacOS 
-      if: startsWith(matrix.os, 'macos-')
-      run: |
-          export CMAKE_TLS_VERIFY=0
-          export ICU_PATH=$(brew --prefix icu4c)
-          export BOOST_PATH=$(brew --prefix boost)
-          export CURL_PATH=$(brew --prefix curl)
-          export ZLIB_PATH=$(brew --prefix zlib)
-          export ZSTD_PATH=$(brew --prefix zstd)
-          export PATH="$CURL_PATH/bin:$ICU_PATH/bin:$ICU_PATH/sbin:$PATH"
-          export LDFLAGS="-L$CURL_PATH/lib -L$BOOST_PATH/lib -L$ICU_PATH/lib -L$ZLIB_PATH/lib -L$ZSTD_PATH/lib"
-          export CPPFLAGS="-I$CURL_PATH/include -I$BOOST_PATH/include -I$ICU_PATH/include -I$ZLIB_PATH/include -I$ZSTD_PATH/include"
-          export PKG_CONFIG_PATH="$CURL_PATH/lib/pkgconfig:$BOOST_PATH/lib/pkgconfig:$ICU_PATH/lib/pkgconfig:$ZLIB_PATH/lib/pkgconfig:$ZSTD_PATH/lib/pkgconfig"
-          export CMAKE_PREFIX_PATH="$BOOST_PATH;$CURL_PATH;$ICU_PATH"
-          sed -i '' -e 's/-DCMAKE_PREFIX_PATH="$DEPS/-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH;$DEPS/' BuildMac.sh
-          sed -i '' -e 's/-DQDT_INTERNAL_TESTING=0/-DQDT_INTERNAL_TESTING=1/' BuildMac.sh 
-          sed -i '' -e 's/-DQDT_RELEASE_TO_PUBLIC=1/-DQDT_RELEASE_TO_PUBLIC=0/' BuildMac.sh
-          chmod +x BuildMac.sh
-          ./BuildMac.sh -t 14.0 -x
-
     - name: Upload Artifacts on Windows
       if: startsWith(matrix.os, 'windows-')
       uses: actions/upload-artifact@v5.0.0
       with:
         name: QIDIStudio_windows
         path: install_dir
-
-    - name: Upload Artifacts on MacOS
-      if: startsWith(matrix.os, 'macos-')
-      uses: actions/upload-artifact@v5.0.0
-      with:
-        name: QIDIStudio_macos
-        path: build/x86_64/QIDIStudio/QIDIStudio.app/       
-
-    - name: Upload Artifacts on Linux
-      if: startsWith(matrix.os, 'ubuntu-')
-      uses: actions/upload-artifact@v5.0.0
-      with:
-        name: QIDIStudio_linux
-        path: build/QIDIStudio.tar
-
-    - name: Upload Artifacts on Linux - Appimage
-      if: startsWith(matrix.os, 'ubuntu-')
-      uses: actions/upload-artifact@v5.0.0
-      with:
-        name: QIDIStudio_AppImage
-        path: build/QIDIStudio_ubu64.AppImage
