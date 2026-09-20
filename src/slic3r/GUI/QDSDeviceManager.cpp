@@ -984,11 +984,13 @@ void QDSDevice::updateFilamentConfig(bool force_local)
 
     auto future1 = std::async(std::launch::async, [this, flushPendingBoxUpdate, force_local]() {
         std::string resultBody;
-        //y83
-        std::lock_guard<std::mutex> lock(m_config_mtx);
         struct RefreshGuard {
             QDSDevice *device;
-            ~RefreshGuard() { device->m_filament_config_refreshing = false; }
+            ~RefreshGuard()
+            {
+                std::lock_guard<std::mutex> lock(device->m_config_mtx);
+                device->m_filament_config_refreshing = false;
+            }
         } refresh_guard{ this };
 
         // ── Shared lambda: parse result JSON body into m_filamentConfig ──
@@ -1022,6 +1024,7 @@ void QDSDevice::updateFilamentConfig(bool force_local)
                 parseToInt("box_min_temp", boxMinTemps);
                 parseToInt("box_max_temp", boxMaxTemps);
 
+                std::lock_guard<std::mutex> lock(m_config_mtx);
                 m_filamentConfig.resize(names.size());
                 for (int i = 1; i < (int)m_filamentConfig.size(); ++i) {
                     m_filamentConfig[i].name        = names[i];
