@@ -955,7 +955,7 @@ void QDSDevice::updateBoxDataByJson(const json status)
     }
 }
 
-void QDSDevice::updateFilamentConfig()
+void QDSDevice::updateFilamentConfig(bool force_local)
 {
     // ── Double-checked locking: skip if already initialized ──
     if (m_is_init_filamentConfig) {
@@ -978,7 +978,7 @@ void QDSDevice::updateFilamentConfig()
         }
     };
 
-    auto future1 = std::async(std::launch::async, [this, flushPendingBoxUpdate]() {
+    auto future1 = std::async(std::launch::async, [this, flushPendingBoxUpdate, force_local]() {
         std::string resultBody;
         //y83
         std::lock_guard<std::mutex> lock(m_config_mtx);
@@ -1091,7 +1091,7 @@ void QDSDevice::updateFilamentConfig()
 #endif
         }
         else {
-            if(is_net_device){
+            if(is_net_device && !force_local){
 #if QDT_RELEASE_TO_PUBLIC
                 HttpData httpData;
                 json bodyJson;
