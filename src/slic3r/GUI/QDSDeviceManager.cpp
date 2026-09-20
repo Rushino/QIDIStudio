@@ -958,12 +958,12 @@ void QDSDevice::updateBoxDataByJson(const json status)
 void QDSDevice::updateFilamentConfig(bool force_local)
 {
     // ── Double-checked locking: skip if already initialized ──
-    if (m_is_init_filamentConfig) {
+    if (m_is_init_filamentConfig && !force_local) {
         return;
     }
     {
         std::lock_guard<std::mutex> lock(m_config_mtx);
-        if (m_is_init_filamentConfig) {
+        if (m_is_init_filamentConfig && !force_local) {
             return;
         }
     }
