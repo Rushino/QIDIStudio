@@ -165,7 +165,7 @@ public:
 	// cj_1 
 	void updateByJsonData(const json& status);
     bool is_online();
-    void updateFilamentConfig();    //When "m_frp_url" is updated, update the config file.
+    void updateFilamentConfig(bool force_local = false);    // force_local is used when a cloud-listed device is connected over LAN.
 
     void updateBoxDataByJson(const json status);
     std::vector<float> getNozzleDiameter();
@@ -198,7 +198,7 @@ private:
 
 public:
 
-    // ´òÓ¡»úÊı¾İ
+    // æ‰“å°æœºæ•°æ®
     std::string     m_name;
     std::string     m_id;
     std::string     m_ip;
@@ -239,10 +239,10 @@ public:
     std::string     m_print_progress{ "N/A" };
     std::string     m_filament_weight{ "0g" };
     std::string     m_print_total_time{ "0m" };
-    std::string     m_print_png_url{ "" };      // ´òÓ¡Í¼±êµÄurl
-    std::string     m_status{ "standby" };      // µ±Ç°´òÓ¡×´Ì¬
-	std::string     m_print_state;              // µ±Ç°´òÓ¡×´Ì¬
-    std::string     m_print_msg{""};                // µ±Ç°´òÓ¡×´Ì¬ĞÅÏ¢ ÀıÈç£ºÇåÀí´òÓ¡Í·£¬Ğ£×¼
+    std::string     m_print_png_url{ "" };      // æ‰“å°å›¾æ ‡çš„url
+    std::string     m_status{ "standby" };      // å½“å‰æ‰“å°çŠ¶æ€
+	std::string     m_print_state;              // å½“å‰æ‰“å°çŠ¶æ€
+    std::string     m_print_msg{""};                // å½“å‰æ‰“å°çŠ¶æ€ä¿¡æ¯ ä¾‹å¦‚ï¼šæ¸…ç†æ‰“å°å¤´ï¼Œæ ¡å‡†
     //y83
     std::string     m_print_png_plate_index{""};
     std::string     m_print_png_path_for_p2p{""};
@@ -252,7 +252,7 @@ public:
 	// Current plate index from Klipper print_stats/plateindex,
 	// parsed as int from JSON string. Default 1.
 	int m_plate_index{1};
-	double m_print_progress_float{ 0 };         // cj_1 µ±Ç°½ø¶È°Ù·Ö±È 0.16´ú±í 16%
+	double m_print_progress_float{ 0 };         // cj_1 å½“å‰è¿›åº¦ç™¾åˆ†æ¯” 0.16ä»£è¡¨ 16%
 
     std::vector<Filament> m_boxData;
 	std::vector<int> m_boxTemperature;
@@ -261,12 +261,12 @@ public:
     //y83
     std::string m_box_signature;
     bool m_is_auto_reload{ false };    // 
-    std::string m_cur_slot;            // µ±Ç°Ê¹ÓÃµÄ²Û£¬µÚÒ»¸ö²ÛÎª slot-0  µÚËÄ¸öÎªslot-3
-    int m_box_count{ 0 };              // µ±Ç°ºĞ×ÓµÄÊıÁ¿
-    std::vector<Filament> m_filamentConfig; // ËùÓĞµÄÊı¾İ£¬indexÊÇfilamentµÄ±àºÅ
-    bool m_auto_read_rfid{ false };             // ²åÈëÊ±×Ô¶¯¸üĞÂ
-    bool m_init_detect{ false };                // ¿ª»úÊ±¼ì²â
-    bool m_auto_reload_detect{ false };         // ×Ô¶¯ĞøÁÏ
+    std::string m_cur_slot;            // å½“å‰ä½¿ç”¨çš„æ§½ï¼Œç¬¬ä¸€ä¸ªæ§½ä¸º slot-0  ç¬¬å››ä¸ªä¸ºslot-3
+    int m_box_count{ 0 };              // å½“å‰ç›’å­çš„æ•°é‡
+    std::vector<Filament> m_filamentConfig; // æ‰€æœ‰çš„æ•°æ®ï¼Œindexæ˜¯filamentçš„ç¼–å·
+    bool m_auto_read_rfid{ false };             // æ’å…¥æ—¶è‡ªåŠ¨æ›´æ–°
+    bool m_init_detect{ false };                // å¼€æœºæ—¶æ£€æµ‹
+    bool m_auto_reload_detect{ false };         // è‡ªåŠ¨ç»­æ–™
 
     //y78
     std::vector<std::string> m_filament_colors;
@@ -308,7 +308,7 @@ public:
     json m_pending_save_variables;
     std::atomic<bool> m_has_pending_box_update{ false };
 
-    //cj_3 ÔÆ¶Ë legacy ÂÖÑ¯£ºĞÂÉè±¸ÓÃ m_frp_url£»¾ÉÉè±¸ÓÃ m_net_link_url£¨NetDevice.link_url£©
+    //cj_3 äº‘ç«¯ legacy è½®è¯¢ï¼šæ–°è®¾å¤‡ç”¨ m_frp_urlï¼›æ—§è®¾å¤‡ç”¨ m_net_link_urlï¼ˆNetDevice.link_urlï¼‰
     std::string m_net_link_url;
     bool        m_net_poll_use_frp{ false };
 
@@ -415,7 +415,7 @@ public:
     bool findLocalForNetDevice(const NetDevice& net_dev, LocalDiscoveredDevice& out) const;
 #endif
 
-    //cj_3 ¹©ºóÌ¨Ïß³ÌÃ¶¾ÙÉè±¸×ö HTTP ×´Ì¬ÂÖÑ¯£¨¿½±´ shared_ptr£¬³ÖËøÊ±¼ä¶Ì£©
+    //cj_3 ä¾›åå°çº¿ç¨‹æšä¸¾è®¾å¤‡åš HTTP çŠ¶æ€è½®è¯¢ï¼ˆæ‹·è´ shared_ptrï¼ŒæŒé”æ—¶é—´çŸ­ï¼‰
     std::vector<std::pair<std::string, std::shared_ptr<QDSDevice>>> snapshotDevices();
 
     //y83
