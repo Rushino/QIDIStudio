@@ -1026,7 +1026,7 @@ void QDSDevice::updateFilamentConfig(bool force_local)
 
                 std::lock_guard<std::mutex> lock(m_config_mtx);
                 m_filamentConfig.resize(names.size());
-                for (int i = 1; i < (int)m_filamentConfig.size(); ++i) {
+                for (size_t i = 0; i < m_filamentConfig.size(); ++i) {
                     m_filamentConfig[i].name        = names[i];
                     m_filamentConfig[i].type        = types[i];
                     m_filamentConfig[i].minTemp     = minTemps[i];
