@@ -1086,22 +1086,29 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             return true;
         };
 
-        if (active_p2p) {
+        auto tryP2PFilamentConfig = [this, &parseFilamentJson]() -> bool {
 #if QDT_RELEASE_TO_PUBLIC
-            auto& qds_p2p = P2PManager::instance();
-            if (!qds_p2p.isConnected())
-                return;
+            if (!active_p2p) {
+                return false;
+            }
 
-            std::mutex              syncMutex;
+            auto& qds_p2p = P2PManager::instance();
+            if (!qds_p2p.isConnected()) {
+                BOOST_LOG_TRIVIAL(warning) << "QDSDevice: P2P filament config unavailable, trying fallback";
+                return false;
+            }
+
+            std::mutex syncMutex;
             std::condition_variable syncCV;
-            bool                    received = false;
+            std::string responseBody;
+            bool received = false;
 
             int textToken = qds_p2p.onText([&](uint8_t type, int64_t reqId, int32_t,
                                                 const uint8_t *data, size_t len) {
                 std::string text((const char *)data, len);
                 {
                     std::lock_guard<std::mutex> lock(syncMutex);
-                    resultBody = std::move(text);
+                    responseBody = std::move(text);
                     received = true;
                 }
                 syncCV.notify_one();
@@ -1109,7 +1116,7 @@ void QDSDevice::updateFilamentConfig(bool force_local)
 
             int64_t reqId = (int64_t)(std::chrono::system_clock::now().time_since_epoch().count());
             bool sent = false;
-            for (int retry = 0; retry < 5; retry++) {
+            for (int retry = 0; retry < 5; ++retry) {
                 if (qds_p2p.sendTextCommand(R"({"method":"fetch_offical_filament_list"})", reqId) >= 0) {
                     sent = true;
                     break;
@@ -1118,93 +1125,128 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             }
 
             if (!sent) {
-                BOOST_LOG_TRIVIAL(error) << "QDSDevice: failed to send fetch_filas_cfg";
+                BOOST_LOG_TRIVIAL(warning) << "QDSDevice: failed to send P2P filament config request";
                 qds_p2p.off(textToken);
-                return;
+                return false;
             }
 
             {
                 std::unique_lock<std::mutex> lock(syncMutex);
                 if (!syncCV.wait_for(lock, std::chrono::seconds(30), [&] { return received; })) {
-                    BOOST_LOG_TRIVIAL(error) << "QDSDevice: fetch_filas_cfg timeout";
+                    BOOST_LOG_TRIVIAL(warning) << "QDSDevice: P2P filament config request timed out";
                     qds_p2p.off(textToken);
-                    return;
+                    return false;
                 }
             }
 
             qds_p2p.off(textToken);
 
-            if (!resultBody.empty()) {
-                json jsonBody_ = json::parse(resultBody);
-                parseFilamentJson(jsonBody_);
+            try {
+                if (!responseBody.empty()) {
+                    json responseJson = json::parse(responseBody);
+                    if (parseFilamentJson(responseJson)) {
+                        return true;
+                    }
+                }
             }
+            catch (...) {
+            }
+
+            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: invalid P2P filament config, trying fallback";
 #endif
-        }
-        else {
-            if(is_net_device && !force_local){
+            return false;
+        };
+
+        auto tryCloudFilamentConfig = [this, &parseFilamentJson]() -> bool {
 #if QDT_RELEASE_TO_PUBLIC
-                HttpData httpData;
-                json bodyJson;
-                bodyJson["serialNumber"] = m_id;
-                httpData.body = bodyJson.dump();
-                std::string region = wxGetApp().app_config->get("region");
-                if (region == "China") {
-                    httpData.env = PRODUCTIONENV;
-                }
-                else {
-                    httpData.env = FOREIGNENV;
-                }
-                httpData.target = PRINTERTYPE;
-                httpData.taskPath = "/get/filament/config/all";
-                bool isSucceed = false;
-                std::string resultBody = MakerHttpHandle::getInstance().httpPostTask(httpData, isSucceed);
-
-                if (isSucceed) {
-                    try {
-                        json resultJson = json::parse(resultBody);
-                        json resultJson_ = resultJson["data"];
-                        if (!resultJson_.empty())
-                            parseFilamentJson(resultJson_);
-                    }
-                    catch (...) {
-                    }
-                }
-                else {
-                    BOOST_LOG_TRIVIAL(error) << "http error" << isSucceed << "   " << "httpDatabody:  " <<httpData.body <<  "   " << __FUNCTION__;
-                }
-#endif
-            } else {
-                std::string url = m_frp_url + "/api/qidiclient/config/offical_filament_list";
-                Slic3r::Http httpPost = Slic3r::Http::get(url);
-                httpPost.timeout_max(5)
-                    .header("accept", "application/json")
-                    .header("Content-Type", "application/json")
-                    .on_complete(
-                        [&resultBody](std::string body, unsigned status) {
-                            resultBody = body;
-                        }
-                    )
-                    .on_error(
-                        [this](std::string body, std::string error, unsigned status) {
-
-                        }
-                    ).perform_sync();
-
-                try {
-                    json bodyJson_ = json::parse(resultBody);
-                    if (bodyJson_.contains("result") && bodyJson_["result"].is_object() &&
-                        !bodyJson_["result"].empty() && parseFilamentJson(bodyJson_["result"])) {
-                        return;
-                    }
-                }
-                catch (...) {
-                }
-
-                // The .10 release always had the bundled official filament
-                // catalogue available. Keep local QIDI Box sync functional
-                // even when the newer remote catalogue endpoint is unavailable.
-                loadBundledFilamentConfig();
+            if (!is_net_device) {
+                return false;
             }
+
+            HttpData httpData;
+            json bodyJson;
+            bodyJson["serialNumber"] = m_id;
+            httpData.body = bodyJson.dump();
+            std::string region = wxGetApp().app_config->get("region");
+            httpData.env = region == "China" ? PRODUCTIONENV : FOREIGNENV;
+            httpData.target = PRINTERTYPE;
+            httpData.taskPath = "/get/filament/config/all";
+
+            bool isSucceed = false;
+            std::string responseBody = MakerHttpHandle::getInstance().httpPostTask(httpData, isSucceed);
+            if (!isSucceed) {
+                BOOST_LOG_TRIVIAL(warning) << "QDSDevice: cloud filament config unavailable, trying local";
+                return false;
+            }
+
+            try {
+                json responseJson = json::parse(responseBody);
+                if (responseJson.contains("data") && responseJson["data"].is_object() &&
+                    !responseJson["data"].empty() && parseFilamentJson(responseJson["data"])) {
+                    return true;
+                }
+            }
+            catch (...) {
+            }
+
+            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: invalid cloud filament config, trying local";
+#endif
+            return false;
+        };
+
+        auto tryLocalFilamentConfig = [this, &parseFilamentJson]() -> bool {
+            std::string responseBody;
+            std::string url = m_frp_url + "/api/qidiclient/config/offical_filament_list";
+            Slic3r::Http httpGet = Slic3r::Http::get(url);
+            httpGet.timeout_max(5)
+                .header("accept", "application/json")
+                .header("Content-Type", "application/json")
+                .on_complete(
+                    [&responseBody](std::string body, unsigned status) {
+                        responseBody = std::move(body);
+                    }
+                )
+                .on_error(
+                    [](std::string body, std::string error, unsigned status) {
+                    }
+                ).perform_sync();
+
+            try {
+                if (!responseBody.empty()) {
+                    json responseJson = json::parse(responseBody);
+                    if (responseJson.contains("result") && responseJson["result"].is_object() &&
+                        !responseJson["result"].empty() && parseFilamentJson(responseJson["result"])) {
+                        return true;
+                    }
+                }
+            }
+            catch (...) {
+            }
+
+            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: local filament config unavailable, using bundled catalogue";
+            return false;
+        };
+
+        // Prefer the connection mode already in use, but never make Box
+        // filament synchronization depend on a single transport.
+        //
+        // Normal mode: P2P -> cloud -> printer-local -> bundled catalogue.
+        // Forced local refresh: printer-local -> bundled catalogue.
+        if (!force_local) {
+            if (tryP2PFilamentConfig()) {
+                return;
+            }
+            if (tryCloudFilamentConfig()) {
+                return;
+            }
+        }
+
+        if (tryLocalFilamentConfig()) {
+            return;
+        }
+
+        if (!loadBundledFilamentConfig()) {
+            BOOST_LOG_TRIVIAL(error) << "QDSDevice: no filament catalogue source is available";
         }
 	});
 }
