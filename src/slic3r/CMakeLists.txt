@@ -674,8 +674,6 @@ add_subdirectory(GUI/DeviceWeb)
 
 if(QDT_RELEASE_TO_PUBLIC)
 	list(APPEND SLIC3R_GUI_SOURCES
-			QIDI/UserPresetSyncManager.cpp
-			QIDI/UserPresetSyncManager.hpp
 			QIDI/QIDINetwork.cpp
 			QIDI/QIDINetwork.hpp
 			QIDI/QIDINetworkTypes.hpp
