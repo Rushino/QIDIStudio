@@ -816,18 +816,30 @@ void QDSDevice::updateBoxDataByJson(const json status)
         m_auto_reload_detect = bool(autoReloadInt);
     }
 
+    // Slot presence is reported directly by the printer and does not depend on
+    // the filament catalogue. Parse it before potentially deferring the
+    // name/type/vendor/colour lookup.
+    for (int i = 0; i < 16; ++i) {
+        std::string box_stepper = "box_stepper slot" + std::to_string(i);
+        if (status.contains(box_stepper) &&
+            status[box_stepper].contains("runout_button") &&
+            !status[box_stepper]["runout_button"].is_null()) {
+            int runout_value = status[box_stepper]["runout_button"].get<int>();
+            m_boxData[i].hasMaterial = (runout_value == 0);
+        }
+    }
+    m_boxData[16].hasMaterial = true;
+
     // The per-slot name/type/vendor/colour lookup still needs m_filamentConfig.
     // Queue the full status for a second pass once that catalogue is available,
-    // but do not hide the Box while waiting for it.
+    // but keep the Box and slot-presence state visible while waiting for it.
     if (m_filamentConfig.empty()) {
-        {
-            std::lock_guard<std::mutex> lock(m_config_mtx);
-            if (m_filamentConfig.empty()) {
-                m_pending_save_variables = status;
-                m_has_pending_box_update = true;
-                box_is_update = true;
-                return;
-            }
+        std::lock_guard<std::mutex> lock(m_config_mtx);
+        if (m_filamentConfig.empty()) {
+            m_pending_save_variables = status;
+            m_has_pending_box_update = true;
+            box_is_update = true;
+            return;
         }
     }
 	for (int i = 0; i < 17; ++i) {
