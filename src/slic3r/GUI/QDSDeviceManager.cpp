@@ -783,19 +783,53 @@ void QDSDevice::updateByJsonData(const json& status)
 
 void QDSDevice::updateBoxDataByJson(const json status)
 {
-    //y83
-    if (m_filamentConfig.size() == 0) {
-        // Filament config not yet loaded — store the entire status so it can
-        // be re-processed after updateFilamentConfig() completes.
-        std::lock_guard<std::mutex> lock(m_config_mtx);
-        if (m_filamentConfig.size() == 0) {
-            m_pending_save_variables = status;
-            m_has_pending_box_update = true;
-            return;
-        }
-        // Config became ready while we waited for the lock — fall through.
+    if (!status.contains("save_variables") || !status["save_variables"].is_object()) {
+        return;
     }
-	json saveVariables = status["save_variables"];
+
+    json saveVariables = status["save_variables"];
+
+    // Box presence/state does not depend on the filament catalogue. Keep this
+    // information current even when the .60 filament-config retrieval has not
+    // completed (or fails).
+    int count = getJsonCurStageToInt(saveVariables, "box_count");
+    if (count != -1) {
+        m_box_count = count;
+    }
+
+    if (saveVariables.contains("last_load_slot") && saveVariables["last_load_slot"].is_string()) {
+        m_cur_slot = saveVariables["last_load_slot"].get<std::string>();
+    }
+
+    int autoReadInt = getJsonCurStageToInt(saveVariables, "auto_read_rfid");
+    if (autoReadInt != -1) {
+        m_auto_read_rfid = bool(autoReadInt);
+    }
+
+    int initDetctInt = getJsonCurStageToInt(saveVariables, "auto_init_detect");
+    if (initDetctInt != -1) {
+        m_init_detect = bool(initDetctInt);
+    }
+
+    int autoReloadInt = getJsonCurStageToInt(saveVariables, "auto_reload_detect");
+    if (autoReloadInt != -1) {
+        m_auto_reload_detect = bool(autoReloadInt);
+    }
+
+    // The per-slot name/type/vendor/colour lookup still needs m_filamentConfig.
+    // Queue the full status for a second pass once that catalogue is available,
+    // but do not hide the Box while waiting for it.
+    if (m_filamentConfig.empty()) {
+        {
+            std::lock_guard<std::mutex> lock(m_config_mtx);
+            if (m_filamentConfig.empty()) {
+                m_pending_save_variables = status;
+                m_has_pending_box_update = true;
+                box_is_update = true;
+                return;
+            }
+        }
+    }
 	for (int i = 0; i < 17; ++i) {
 		std::string serial = "slot" + std::to_string(i);
 		int filamentIndex = getJsonCurStageToInt(saveVariables, "filament_" + serial);
@@ -842,35 +876,11 @@ void QDSDevice::updateBoxDataByJson(const json status)
     //if (isExit != -1) {
         m_boxData[16].hasMaterial =  true;
     //}
-	int count = getJsonCurStageToInt(saveVariables, "box_count");
-	if (count != -1) {
-		m_box_count = count;
-	}
-    
-	if (saveVariables.contains("last_load_slot") && saveVariables["last_load_slot"].is_string()) {
-        m_cur_slot = saveVariables["last_load_slot"].get<std::string>();
-	}
-	
     int b_endstop_state = 0;
     //twoStageParse1(status, target, first, second, temp_is_update);
     twoStageParse1(status, b_endstop_state, "", "", box_is_update);
     if (b_endstop_state == 1) {
         m_cur_slot = "slot16";
-    }
-
-    int autoReadInt = getJsonCurStageToInt(saveVariables, "auto_read_rfid");
-    if (autoReadInt != -1) {
-        m_auto_read_rfid = bool(autoReadInt);
-    }
-
-    int initDetctInt = getJsonCurStageToInt(saveVariables, "auto_init_detect");
-    if (initDetctInt != -1) {
-        m_init_detect = bool(initDetctInt);
-    }
-
-    int autoReloadInt = getJsonCurStageToInt(saveVariables, "auto_reload_detect");
-    if (autoReloadInt != -1) {
-        m_auto_reload_detect = bool(autoReloadInt);
     }
 
     //y78
