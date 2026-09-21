@@ -1069,6 +1069,23 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             }
         };
 
+        auto loadBundledFilamentConfig = [this, &flushPendingBoxUpdate]() -> bool {
+            if (m_general_filamentConfig.empty()) {
+                initGeneralData();
+            }
+            if (m_general_filamentConfig.empty()) {
+                return false;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(m_config_mtx);
+                m_filamentConfig = m_general_filamentConfig;
+                m_is_init_filamentConfig = true;
+            }
+            flushPendingBoxUpdate();
+            return true;
+        };
+
         if (active_p2p) {
 #if QDT_RELEASE_TO_PUBLIC
             auto& qds_p2p = P2PManager::instance();
@@ -1173,12 +1190,20 @@ void QDSDevice::updateFilamentConfig(bool force_local)
                         }
                     ).perform_sync();
 
-                json bodyJson_ = json::parse(resultBody);
-                if (!bodyJson_.contains("result")) return;
-                json resultJson_ = bodyJson_["result"];
-                if (!resultJson_.is_object()) return;
-                if (!resultJson_.empty())
-                    parseFilamentJson(resultJson_);
+                try {
+                    json bodyJson_ = json::parse(resultBody);
+                    if (bodyJson_.contains("result") && bodyJson_["result"].is_object() &&
+                        !bodyJson_["result"].empty() && parseFilamentJson(bodyJson_["result"])) {
+                        return;
+                    }
+                }
+                catch (...) {
+                }
+
+                // The .10 release always had the bundled official filament
+                // catalogue available. Keep local QIDI Box sync functional
+                // even when the newer remote catalogue endpoint is unavailable.
+                loadBundledFilamentConfig();
             }
         }
 	});
