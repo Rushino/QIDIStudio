@@ -883,6 +883,13 @@ void QDSPrinterWebView::TransitionToNetDeviceViaLocal(const NetDevice& net_devic
         device->m_url = "ws://" + local_ip + ":7125/websocket";
         device->m_ip  = local_ip;
         device->m_frp_url = "http://" + local_ip;
+
+        // The device still belongs to the cloud/net section, but this connection is local.
+        // Load the filament catalog from the printer so queued save_variables data can be
+        // resolved into QIDI Box slots. Without this, local-transitioned net devices can
+        // remain with only the external spool available in the Prepare tab.
+        device->updateFilamentConfig(true);
+
         // Keep is_net_device = true — the button stays in the net section
         BOOST_LOG_TRIVIAL(trace) << __FUNCTION__
             << " Updated net device " << device_id

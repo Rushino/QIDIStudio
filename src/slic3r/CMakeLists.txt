@@ -241,8 +241,6 @@ set(SLIC3R_GUI_SOURCES
     GUI/DownloadManager.hpp
     GUI/QDSDeviceManager.cpp
     GUI/QDSDeviceManager.hpp
-    QIDI/UserPresetSyncManager.cpp
-    QIDI/UserPresetSyncManager.hpp
     GUI/BedShapeDialog.cpp
     GUI/BedShapeDialog.hpp
     GUI/Plater.cpp
@@ -744,7 +742,7 @@ target_include_directories(libslic3r_gui PRIVATE Utils)
 #set(WEBSOCKETPP_INSTALL_DIR ${CMAKE_PREFIX_PATH})
 #target_include_directories(libslic3r_gui ${CMAKE_PREFIX_PATH}/include)
 
-# pgLibConnect Í·ÎÄ¼þÆ½Ì¨ÎÞ¹Ø£¬ÈýÆ½Ì¨¾ùÌá¹©£¨Windows/MacOSX/Ubuntu£©
+# pgLibConnect Í·ï¿½Ä¼ï¿½Æ½Ì¨ï¿½Þ¹Ø£ï¿½ï¿½ï¿½Æ½Ì¨ï¿½ï¿½ï¿½á¹©ï¿½ï¿½Windows/MacOSX/Ubuntuï¿½ï¿½
 target_include_directories(libslic3r_gui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/pgLibConnect/Include)
 
 if (WIN32)
@@ -756,12 +754,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SLIC3R_GUI_SOURCES})
 encoding_check(libslic3r_gui)
 
 target_link_libraries(libslic3r_gui libslic3r cereal imgui imguizmo minilzo GLEW::GLEW OpenGL::GL hidapi ${wxWidgets_LIBRARIES} glfw libcurl OpenSSL::SSL OpenSSL::Crypto)
-# pgLibConnect °´Æ½Ì¨Á´½Ó£¨Windows: µ¼Èë¿â£»macOS/Linux: ¾²Ì¬¿â£©
+# pgLibConnect ï¿½ï¿½Æ½Ì¨ï¿½ï¿½ï¿½Ó£ï¿½Windows: ï¿½ï¿½ï¿½ï¿½â£»macOS/Linux: ï¿½ï¿½Ì¬ï¿½â£©
 if (WIN32)
     target_link_libraries(libslic3r_gui ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/pgLibConnect/Lib/Windows/pgDllConnect.lib)
 elseif (APPLE)
     target_link_libraries(libslic3r_gui ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/pgLibConnect/Lib/MacOSX/libconnect.a)
-    # libconnect.a ÄÚ²¿ÒÀÀµ DNS ½âÎö£¨res_9_init µÈ£©£¬ÐèÁ´½ÓÏµÍ³ libresolv
+    # libconnect.a ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ DNS ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½res_9_init ï¿½È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ libresolv
     target_link_libraries(libslic3r_gui resolv)
 elseif (UNIX)
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -769,7 +767,7 @@ elseif (UNIX)
     else ()
         target_link_libraries(libslic3r_gui ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/pgLibConnect/Lib/Ubuntu/x32/libconnect.a)
     endif ()
-    # libconnect.a ÄÚ²¿ÒÀÀµ DNS ½âÎö£¨res_9_init µÈ£©£¬ÐèÁ´½ÓÏµÍ³ libresolv
+    # libconnect.a ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ DNS ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½res_9_init ï¿½È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ libresolv
     target_link_libraries(libslic3r_gui resolv)
 endif ()
 #target_link_libraries(libslic3r_gui libslic3r cereal imgui imguizmo minilzo GLEW::GLEW OpenGL::GL hidapi libcurl OpenSSL::SSL OpenSSL::Crypto ${wxWidgets_LIBRARIES} glfw)
