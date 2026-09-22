@@ -1005,7 +1005,6 @@ void QDSDevice::updateFilamentConfig(bool force_local)
     };
 
     auto future1 = std::async(std::launch::async, [this, flushPendingBoxUpdate, force_local]() {
-        std::string resultBody;
         struct RefreshGuard {
             QDSDevice *device;
             ~RefreshGuard()
@@ -1069,21 +1068,72 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             }
         };
 
-        auto loadBundledFilamentConfig = [this, &flushPendingBoxUpdate]() -> bool {
-            if (m_general_filamentConfig.empty()) {
-                initGeneralData();
-            }
-            if (m_general_filamentConfig.empty()) {
+        auto parseFilamentIni = [this, &flushPendingBoxUpdate](const std::string &iniBody) -> bool {
+            try {
+                pt::ptree ini;
+                std::istringstream stream(iniBody);
+                pt::ini_parser::read_ini(stream, ini);
+
+                std::vector<Filament> filamentConfig(100);
+                bool foundFilament = false;
+
+                for (const auto &section : ini) {
+                    const std::string &sectionName = section.first;
+                    if (sectionName == "colordict" || sectionName == "vendor_list") {
+                        for (const auto &item : section.second) {
+                            const int index = std::stoi(item.first);
+                            if (index < 0 || static_cast<size_t>(index) >= filamentConfig.size()) {
+                                continue;
+                            }
+                            if (sectionName == "colordict") {
+                                filamentConfig[index].colorHexCode = item.second.data();
+                            } else {
+                                filamentConfig[index].vendor = item.second.data();
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (sectionName.rfind("fila", 0) != 0) {
+                        continue;
+                    }
+
+                    const int index = std::stoi(sectionName.substr(4));
+                    if (index < 0 || static_cast<size_t>(index) >= filamentConfig.size()) {
+                        continue;
+                    }
+
+                    Filament &filament = filamentConfig[index];
+                    for (const auto &item : section.second) {
+                        if (item.first == "filament") {
+                            filament.name = item.second.data();
+                            foundFilament = foundFilament || !filament.name.empty();
+                        } else if (item.first == "type") {
+                            filament.type = item.second.data();
+                        } else if (item.first == "min_temp") {
+                            filament.minTemp = item.second.get_value<int>(0);
+                        } else if (item.first == "max_temp") {
+                            filament.maxTemp = item.second.get_value<int>(0);
+                        } else if (item.first == "box_min_temp") {
+                            filament.boxMinTemp = item.second.get_value<int>(0);
+                        } else if (item.first == "box_max_temp") {
+                            filament.boxMaxTemp = item.second.get_value<int>(0);
+                        }
+                    }
+                }
+
+                if (!foundFilament) {
+                    return false;
+                }
+
+                std::lock_guard<std::mutex> lock(m_config_mtx);
+                m_filamentConfig = std::move(filamentConfig);
+                m_is_init_filamentConfig = true;
+                flushPendingBoxUpdate();
+                return true;
+            } catch (...) {
                 return false;
             }
-
-            {
-                std::lock_guard<std::mutex> lock(m_config_mtx);
-                m_filamentConfig = m_general_filamentConfig;
-                m_is_init_filamentConfig = true;
-            }
-            flushPendingBoxUpdate();
-            return true;
         };
 
         auto tryP2PFilamentConfig = [this, &parseFilamentJson]() -> bool {
@@ -1223,15 +1273,59 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             catch (...) {
             }
 
-            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: local filament config unavailable, using bundled catalogue";
+            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: qidiclient filament config unavailable, trying Moonraker file";
+            return false;
+        };
+
+        auto tryMoonrakerFilamentConfig = [this, &parseFilamentIni]() -> bool {
+            // m_url is the active printer WebSocket URL. Reuse its host and port so
+            // this also works when HTTP port 80 does not proxy Moonraker (Q2 1.1.1).
+            std::string moonrakerBase = m_url;
+            if (moonrakerBase.rfind("ws://", 0) == 0) {
+                moonrakerBase.replace(0, 5, "http://");
+            } else if (moonrakerBase.rfind("wss://", 0) == 0) {
+                moonrakerBase.replace(0, 6, "https://");
+            } else {
+                BOOST_LOG_TRIVIAL(warning) << "QDSDevice: invalid Moonraker WebSocket URL for filament config";
+                return false;
+            }
+
+            const std::string websocketPath = "/websocket";
+            if (moonrakerBase.size() >= websocketPath.size() &&
+                moonrakerBase.compare(moonrakerBase.size() - websocketPath.size(), websocketPath.size(), websocketPath) == 0) {
+                moonrakerBase.erase(moonrakerBase.size() - websocketPath.size());
+            }
+
+            std::string responseBody;
+            const std::string url = moonrakerBase + "/server/files/config/officiall_filas_list.cfg";
+            Slic3r::Http httpGet = Slic3r::Http::get(url);
+            httpGet.timeout_max(5)
+                .header("accept", "text/plain")
+                .on_complete(
+                    [&responseBody](std::string body, unsigned status) {
+                        if (status >= 200 && status < 300) {
+                            responseBody = std::move(body);
+                        }
+                    }
+                )
+                .on_error(
+                    [](std::string body, std::string error, unsigned status) {
+                    }
+                ).perform_sync();
+
+            if (!responseBody.empty() && parseFilamentIni(responseBody)) {
+                return true;
+            }
+
+            BOOST_LOG_TRIVIAL(warning) << "QDSDevice: Moonraker filament config file unavailable";
             return false;
         };
 
         // Prefer the connection mode already in use, but never make Box
         // filament synchronization depend on a single transport.
         //
-        // Normal mode: P2P -> cloud -> printer-local -> bundled catalogue.
-        // Forced local refresh: printer-local -> bundled catalogue.
+        // Normal mode: P2P -> cloud -> qidiclient -> Moonraker config file.
+        // Forced local refresh: qidiclient -> Moonraker config file.
         if (!force_local) {
             if (tryP2PFilamentConfig()) {
                 return;
@@ -1245,7 +1339,7 @@ void QDSDevice::updateFilamentConfig(bool force_local)
             return;
         }
 
-        if (!loadBundledFilamentConfig()) {
+        if (!tryMoonrakerFilamentConfig()) {
             BOOST_LOG_TRIVIAL(error) << "QDSDevice: no filament catalogue source is available";
         }
 	});
